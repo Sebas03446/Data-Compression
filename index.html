@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">													
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">	
+  <title>Data Compression Visualization</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .rgb-box {
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #fff;
+      border-radius: 4px;
+    }
+    #colorSwatch {
+      width: 100px;
+      height: 100px;
+      border: 1px solid #000;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Data Compression Visualization</h1>
+  <p>Compression Ratio: <span id="compressionRatio">N/A</span></p>
+  <p>Raw Data Bytes: <span id="rawBytes">N/A</span></p>
+  <p>Compressed Data Bytes: <span id="compressedBytes">N/A</span></p>
+
+  <canvas id="dataChart" width="800" height="400"></canvas>
+  
+  <h2>Data Size Comparison</h2>
+  <canvas id="byteChart" width="400" height="200"></canvas>
+  
+  <h2>RGB Sensor Values</h2>
+  <div style="display: flex; gap: 1rem;">
+    <div id="redBox" class="rgb-box" style="background-color: red;">R</div>
+    <div id="greenBox" class="rgb-box" style="background-color: green;">G</div>
+    <div id="blueBox" class="rgb-box" style="background-color: blue;">B</div>
+  </div>
+  <p>
+    Current Values: 
+    R: <span id="currentRed">N/A</span>, 
+    G: <span id="currentGreen">N/A</span>, 
+    B: <span id="currentBlue">N/A</span>
+  </p>
+  <h3>Composite Color</h3>
+  <div id="colorSwatch"></div>
+  
+  <script>
+    const keyframeInterval = 3; // same as used during encoding
+
+    // Initialize line chart for raw vs. reconstructed data (red channel as example)
+    const ctx = document.getElementById('dataChart').getContext('2d');
+    const dataChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Raw Data',
+            data: [],
+            borderColor: 'rgba(75, 192, 192, 1)',
+            fill: false
+          },
+          {
+            label: 'Reconstructed Data',
+            data: [],
+            borderColor: 'rgba(153, 102, 255, 1)',
+            fill: false
+          }
+        ]
+      },
+      options: {
+        scales: {
+          x: {
+            type: 'linear',
+            position: 'bottom'
+          }
+        }
+      }
+    });
+
+    // Initialize bar chart for raw vs. compressed bytes
+    const byteCtx = document.getElementById('byteChart').getContext('2d');
+    const byteChart = new Chart(byteCtx, {
+      type: 'bar',
+      data: {
+        labels: ['Raw Data', 'Compressed Data'],
+        datasets: [{
+          label: 'Bytes',
+          data: [0, 0],
+          backgroundColor: [
+            'rgba(75, 192, 192, 0.5)',
+            'rgba(153, 102, 255, 0.5)'
+          ],
+          borderColor: [
+            'rgba(75, 192, 192, 1)',
+            'rgba(153, 102, 255, 1)'
+          ],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+
+    // Helper: Get the latest data object from an array (or return the object if not an array)
+    function getLatestData(dataObj) {
+      return Array.isArray(dataObj) ? dataObj[dataObj.length - 1] : dataObj;
+    }
+
+    // Update the RGB display and composite color swatch.
+    function updateRGB(rawData) {
+      if (!rawData || !rawData.red || !rawData.green || !rawData.blue) return;
+      const n = rawData.red.length;
+      // Get the latest sensor values.
+      const r = rawData.red[n - 1];
+      const g = rawData.green[n - 1];
+      const b = rawData.blue[n - 1];
+
+      document.getElementById('currentRed').textContent = r;
+      document.getElementById('currentGreen').textContent = g;
+      document.getElementById('currentBlue').textContent = b;
+
+      // Optionally display the sensor values in each colored box.
+      document.getElementById('redBox').textContent = r;
+      document.getElementById('greenBox').textContent = g;
+      document.getElementById('blueBox').textContent = b;
+
+      // Normalize sensor values to a 0-255 range (assuming values between 1000 and 2000)
+      function normalize(val) {
+        return Math.min(255, Math.max(0, Math.round((val - 1000) * 255 / 1000)));
+      }
+      const nr = normalize(r);
+      const ng = normalize(g);
+      const nb = normalize(b);
+
+      // Update composite color swatch based on normalized values.
+      document.getElementById('colorSwatch').style.backgroundColor = `rgb(${nr}, ${ng}, ${nb})`;
+    }
+
+    // Compute raw and compressed byte sizes.
+    function computeBytes(rawData) {
+      let rawBytes = 0, compressedBytes = 0;
+      if (rawData && rawData.red) {
+        const n = rawData.red.length;
+        // Raw: 3 channels * n samples * 2 bytes per sample.
+        rawBytes = 3 * n * 2;
+        // For compressed data: keyframes use 2 bytes and others use 1 byte.
+        const keyframes = 1 + Math.floor((n - 1) / keyframeInterval);
+        const channelCompressed = keyframes * 2 + (n - keyframes) * 1;
+        compressedBytes = 3 * channelCompressed;
+      }
+      return { rawBytes, compressedBytes };
+    }
+
+    // Update the line chart with raw vs. reconstructed data (red channel used as an example).
+    function updateLineChart(rawData, reconstructedData) {
+      if (!rawData || !rawData.red) return;
+      const n = rawData.red.length;
+      const labels = Array.from({ length: n }, (_, i) => i);
+      dataChart.data.labels = labels;
+      dataChart.data.datasets[0].data = rawData.red;
+      dataChart.data.datasets[1].data = reconstructedData.red;
+      dataChart.update();
+    }
+
+    // Establish the WebSocket connection.
+    function connectWebSocket() {
+      const ws = new WebSocket('ws://localhost:8000/api/v1/ws');
+
+      ws.onopen = function() {
+        console.log("WebSocket connection established.");
+      };
+
+      ws.onmessage = function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          console.log("Received data:", data);
+
+          // Update the compression ratio.
+          document.getElementById('compressionRatio').textContent = data.compression_ratio.toFixed(2);
+
+          // Use the latest raw data object if raw_data is an array.
+          const latestRawData = getLatestData(data.raw_data);
+
+          // Compute and display byte counts.
+          const { rawBytes, compressedBytes } = computeBytes(latestRawData);
+          document.getElementById('rawBytes').textContent = rawBytes;
+          document.getElementById('compressedBytes').textContent = compressedBytes;
+          byteChart.data.datasets[0].data = [rawBytes, compressedBytes];
+          byteChart.update();
+
+          // Update the RGB sensor display.
+          updateRGB(latestRawData);
+
+          // Update the line chart (using the red channel as example).
+          updateLineChart(latestRawData, data.reconstructed_data);
+          
+        } catch (error) {
+          console.error("Error parsing WebSocket data:", error);
+        }
+      };
+
+      ws.onerror = function(error) {
+        console.error("WebSocket Error:", error);
+      };
+
+      ws.onclose = function() {
+        console.warn("WebSocket connection closed. Reconnecting in 3 seconds...");
+        setTimeout(connectWebSocket, 3000);
+      };
+    }
+
+    connectWebSocket();
+  </script>
+</body>
+</html>
